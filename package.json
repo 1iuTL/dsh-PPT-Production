@@ -1,0 +1,72 @@
+{
+  "name": "dsh-ppt-production",
+  "version": "1.0.0",
+  "description": "PPT 工作台：在 DSH 里做原生可编辑 PPT（JSON 模型 → pptx + HTML 预览）。",
+  "type": "module",
+  "license": "MIT",
+  "author": "1iuTL",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1iuTL/dsh-PPT-Production.git"
+  },
+  "homepage": "https://github.com/1iuTL/dsh-PPT-Production",
+  "bugs": {
+    "url": "https://github.com/1iuTL/dsh-PPT-Production/issues"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\""
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "vendor",
+    "skills",
+    "cordis.patch.yml",
+    "locale",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    },
+    "install": {
+      "preferred": "tarball",
+      "tarball": "https://github.com/1iuTL/dsh-PPT-Production/releases/latest/download/dsh-ppt-production.tgz",
+      "git": "https://github.com/1iuTL/dsh-PPT-Production.git"
+    },
+    "compatibility": {
+      "dsh": ">=0.2.1-rc.1 <0.3.0",
+      "profiles": [
+        "desktop",
+        "web"
+      ],
+      "dshReleases": {
+        "0.2.1-rc.5": "compatible"
+      }
+    }
+  }
+}

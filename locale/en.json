@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "PPT Workbench · PPT Maker",
+    "description": "Make native-editable PPT inside DSH: JSON model → pptx + HTML preview.",
+    "detail": "docs/DETAIL.md"
+  }
+}

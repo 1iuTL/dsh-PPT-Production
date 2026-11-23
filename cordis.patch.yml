@@ -1,0 +1,6 @@
+- insert:
+    - id: dsh-ppt-production
+      name: dsh-ppt-production
+      inject: ['tools']
+      config:
+        promptPolicy: true

@@ -1,0 +1,8 @@
+{
+  "meta": { "title": "PPT 工作台 Spike", "author": "dsh-decksmith" },
+  "style": "ink-paper",
+  "slides": [
+    { "id": "s1", "layout": "cover", "title": "原生可编辑验证", "subtitle": "真实文本框，非整页 PNG" },
+    { "id": "s2", "layout": "title-body", "title": "要点", "body": ["第一点", "第二点"], "notes": "演讲备注" }
+  ]
+}

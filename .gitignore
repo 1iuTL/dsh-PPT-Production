@@ -1,0 +1,8 @@
+node_modules/
+scripts/spike-out.pptx
+*.tgz
+.tmp/
+package-lock.json
+# 规划文档：本地保留，不随插件发布
+实施规划.md
+规划输入-资料汇总.md

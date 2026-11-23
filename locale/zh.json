@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "PPT 工作台 · PPT 制作",
+    "description": "在 DSH 里做原生可编辑 PPT：JSON 模型 → pptx + HTML 预览。",
+    "detail": "docs/DETAIL.md"
+  }
+}
