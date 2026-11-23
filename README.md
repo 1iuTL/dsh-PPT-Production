@@ -50,7 +50,7 @@ plugin_manager action=install_bundle target=C:\path\to\dsh-ppt-production.tgz
 工作台内容：
 
 - **幻灯片大纲**：模型调用 `deck_plan` 后显示逐页标题与要点；可点“编辑”直接改（每行一页：`标题 | 要点1；要点2`）。
-- **视觉风格**：建议 / 预设 / 自定义三个页签；点卡片选风格。自定义页签内置 Photoshop 风格取色器：色域方块、色相条、HEX、RGB / HSB / CMYK。背景色 / 正文色 / 强调色各是一组颜色：主色 + 附属色，点 `+` 添加颜色；**右键任意颜色 → “删除此颜色”**（删主色时由第一条附属色顶上；没有附属色时不可删）。强调色附属色会按页轮换到页眉色条，背景/正文的附属色先随 `styleOverrides` 保存。
+- **视觉风格**：建议 / 预设 / 自定义三个页签；点卡片选风格。自定义页签内置 Photoshop 风格取色器：色域方块、色相条、HEX、RGB / HSB / CMYK。背景色 / 正文色 / 强调色各是一组颜色：主色 + 附属色，点 `+` 添加颜色；**右键任意颜色 → “删除此颜色”**（删主色时由第一条附属色顶上；没有附属色时不可删）。强调色附属色会按页轮换到页眉色条；背景附属色用于 section/closing 页背景，正文附属色用于这些页的大标题，并自动检查对比度。
 - **建议更改 / 批准并构建**：批准会把大纲、风格和 `styleOverrides` 写进输入框并发送；模型随后 `deck_build`，再用 `present` 交付 pptx。
 - **构建结果**：工作台显示已构建页数与 pptx 路径；点击对话里的交付卡，即可在 DSH 右侧内置窗口预览 PPTX（本地转 PDF）。
 
@@ -79,15 +79,15 @@ deck_build { deck: <上面的模型>, outDir: "C:\\decks" }
 输出：
 
 ```text
-C:\decks\示例演示.deck.json
-C:\decks\示例演示.pptx
-C:\decks\示例演示.preview.html
+C:\decks\示例演示-<构建id>.deck.json
+C:\decks\示例演示-<构建id>.pptx
+C:\decks\示例演示-<构建id>.preview.html
 ```
 
 改稿：
 
 ```text
-deck_edit { modelPath: "C:\\decks\\示例演示.deck.json", patch: { op: "set-text", slideId: "s2", field: "title", value: "新标题" } }
+deck_edit { modelPath: "C:\\decks\\示例演示-<构建id>.deck.json", patch: { op: "set-text", slideId: "s2", field: "title", value: "新标题" } }
 ```
 
 ## 模型

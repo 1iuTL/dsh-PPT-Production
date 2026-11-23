@@ -36,4 +36,4 @@ export const STYLES = [
   },
 ]
 export function getStyle(id) { return STYLES.find(s => s.id === id) }
-export function listStyles() { return STYLES.map(({ id, name, tags, density, rules }) => ({ id, name, tags, density, rules })) }
+export function listStyles() { return STYLES.map(({ id, name, tags, density, palette, fonts, rules }) => ({ id, name, tags, density, palette, fonts, rules })) }

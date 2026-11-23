@@ -14,7 +14,7 @@ export function normalizeDeck(input) {
     ...(src.styleOverrides && typeof src.styleOverrides === 'object' && !Array.isArray(src.styleOverrides)
       ? { styleOverrides: { ...src.styleOverrides } }
       : {}),
-    slides: slides.map((s, i) => ({ ...s, id: s.id ?? `s${i + 1}` })),
+    slides: slides.filter(s => s && typeof s === 'object').map((s, i) => ({ ...s, id: s.id ?? `s${i + 1}` })),
   }
 }
 
@@ -37,10 +37,28 @@ export function validateDeck(deck) {
         const value = deck.styleOverrides.fonts?.[key]
         if (value != null && typeof value !== 'string') errors.push(`styleOverrides.fonts.${key} 必须是字符串`)
       }
+      if (deck.styleOverrides.extras != null) {
+        if (typeof deck.styleOverrides.extras !== 'object' || Array.isArray(deck.styleOverrides.extras)) {
+          errors.push('styleOverrides.extras 必须是对象')
+        } else {
+          for (const key of ['bg', 'ink', 'accent']) {
+            const value = deck.styleOverrides.extras[key]
+            if (value == null) continue
+            if (!Array.isArray(value)) { errors.push(`styleOverrides.extras.${key} 必须是数组`); continue }
+            for (const color of value) {
+              if (!HEX.test(String(color))) errors.push(`styleOverrides.extras.${key} 含非法颜色 "${color}"，必须是 #RRGGBB`)
+            }
+          }
+        }
+      }
     }
   }
   const ids = new Set()
   for (const s of deck.slides ?? []) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) {
+      errors.push('slide 必须是对象')
+      continue
+    }
     if (!LAYOUTS.includes(s.layout)) errors.push(`slide ${s.id ?? '?'}: 非法 layout "${s.layout}"`)
     if (s.id != null) {
       if (typeof s.id !== 'string') errors.push(`slide ${s.id}: id 必须是字符串`)

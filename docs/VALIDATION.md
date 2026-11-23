@@ -7,7 +7,7 @@
 
 ```text
 node --test "tests/*.test.mjs"
-→ tests 40 / pass 40 / fail 0
+→ tests 59 / pass 59 / fail 0
 ```
 
 覆盖：deck 模型校验、五个原创风格与版权护栏、HTML 转义与无外部资源、pptx 真实文本 run、zip 读写、build→read 往返、六种 patch、五个工具（fake Context）、deck_plan 大纲归一、工作台快照、client 模块注册（tab type / body / toolview / input dock）、颜色换算与删除、强调色附属色按页轮换、skill async provider（含 `list()` candidate 必须带字符串 `source` 的回归）、systemPrompt section。
@@ -47,11 +47,20 @@ plugin_manager action=install_bundle target=<repo>
 4. `deck_edit` 把第 2 页标题改为 `三个验证点（已改）`；重建后 `deck_read` 与 HTML 均更新。
 5. 产物：`PPT 工作台-冒烟.pptx` 约 59 KB，`slide1.xml` 含 2 个 `<a:t>` run；HTML 无 `<script>`。
 
+## GitHub 发布（2026-11-23）
+
+- 仓库：https://github.com/1iuTL/dsh-PPT-Production （public，MIT，default branch `main`）
+- 包名：`dsh-ppt-production`；仓库名按用户指定为 `dsh-PPT-Production`
+- Release：https://github.com/1iuTL/dsh-PPT-Production/releases/tag/v1.0.0
+- 资产：`dsh-ppt-production.tgz`（197,983 bytes，由 `.github/workflows/release.yml` 在 release 事件中构建并上传）
+- Actions `release` run：success
+- 本机 `github.com:443` 推送被网络阻断，仓库内容通过 GitHub Git Data API 以快照提交发布；本地 git 历史未直接 push。后续更新需网络恢复后用 API 重新发布，或重新配置可用的 GitHub 入口。
+
 ## 未验证 / 限制
 
-- **工作台 UI**：右侧栏注册、composer 入口、state 路由已实测 active；浏览器里的实际渲染、点击“批准并构建”后的消息回传，需要用户在当前页面点开工作台确认。
+- **工作台 UI**：右侧栏、计划卡、自动展开、取色器输入、批准消息、右键删除与菜单边界已通过真实 DSH 渲染进程实测；取色器拖拽和最终交付卡视觉仍需人工复核。
 - **视觉**：本机未安装 PowerPoint/WPS/LibreOffice 到 PATH；PPTX 的视觉检查走 DSH 右侧内置文档预览（交付卡点击后本地转 PDF）。外部 PowerPoint/WPS 只在需要直接编辑时使用。
 - HTML 预览只是布局近似，不等于 pptx 像素。
 - `deck_read` 是只读摘要，不是完整 OOXML 解析。
 - 外部已有 pptx 的无损原生编辑不在 MVP。
-- 工作台状态目前是进程级单例；多会话会看到同一份最新大纲/构建结果。
+- 工作台状态按会话键隔离；无会话键的旧调用回退到 `default`。重启进程后状态清空，尚未持久化。

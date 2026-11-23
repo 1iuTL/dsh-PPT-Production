@@ -22,3 +22,12 @@ test('getStyle/listStyles', () => {
   assert.equal(listStyles().length, STYLES.length)
   assert.ok(listStyles()[0].rules.length === 3)
 })
+test('listStyles 返回含 palette 和 fonts（M2）', () => {
+  for (const s of listStyles()) {
+    assert.ok(s.palette && typeof s.palette === 'object', `${s.id} 缺 palette`)
+    assert.ok(s.palette.bg && s.palette.ink && s.palette.accent, `${s.id} palette 不完整`)
+    assert.ok(s.fonts && typeof s.fonts === 'object', `${s.id} 缺 fonts`)
+    assert.ok(typeof s.fonts.heading === 'string', `${s.id} 缺 fonts.heading`)
+    assert.ok(typeof s.fonts.body === 'string', `${s.id} 缺 fonts.body`)
+  }
+})

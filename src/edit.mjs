@@ -39,6 +39,7 @@ export function applyPatch(deck, patch) {
       return d
     }
     case 'add-slide': {
+      if (!patch.slide || typeof patch.slide !== 'object') throw new Error('deck_edit: add-slide 需要 slide 对象')
       const s = { ...patch.slide, id: patch.slide.id ?? `s${d.slides.length + 1}` }
       if (d.slides.some(x => x.id === s.id)) throw new Error(`deck_edit: add-slide id "${s.id}" 已存在`)
       const at = patch.after ? find(d, patch.after) + 1 : d.slides.length

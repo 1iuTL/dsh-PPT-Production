@@ -29,3 +29,28 @@ test('绝对 Windows 图片路径转 file URL', () => {
   const html = renderHtml(d, getStyle('ink-paper'))
   assert.ok(html.includes('file:///C:/pics/a%20b.png'), html)
 })
+test('色条随页轮换 accent extras（M4）', () => {
+  const style = { ...getStyle('ink-paper'), extras: { accent: ['#FF0000', '#00FF00'] } }
+  const d = normalizeDeck({ slides: [
+    { layout: 'cover', title: 'A' },
+    { layout: 'title-body', title: 'B', body: ['b'] },
+    { layout: 'closing', title: 'C' },
+  ]})
+  const html = renderHtml(d, style)
+  // 第 1 页用主色，第 2 页用 extras[0]，第 3 页用 extras[1]
+  const sections = html.match(/<section[^>]*--slide-accent:([^;]+);/g)
+  assert.ok(sections && sections.length === 3, '应有 3 个带 --slide-accent 的 section')
+  assert.ok(sections[0].includes('#FF6900'), '第 1 页用主色')
+  assert.ok(sections[1].includes('#FF0000'), '第 2 页用 extras[0]')
+  assert.ok(sections[2].includes('#00FF00'), '第 3 页用 extras[1]')
+})
+test('字体名特殊字符被清除（L4）', () => {
+  const style = {
+    ...getStyle('ink-paper'),
+    fonts: { heading: 'Font";}body{background:red', body: "Font';}body{display:none" },
+  }
+  const d = normalizeDeck({ slides: [{ layout: 'cover', title: 'T' }] })
+  const html = renderHtml(d, style)
+  assert.ok(!html.includes('background:red'), '不应包含注入的 CSS')
+  assert.ok(!html.includes('display:none'), '不应包含注入的 CSS')
+})

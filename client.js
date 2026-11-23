@@ -6,6 +6,23 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useRef } = React
 
     const KIND = 'dsh-ppt-production'
+
+    // H2: 获取当前会话 ID，用于工作台状态隔离
+    function getSessionId(explicit) {
+      if (explicit) return String(explicit)
+      try {
+        // 兼容旧宿主：尝试从 URL 查询参数获取
+        const params = new URLSearchParams(window.location.search)
+        const fromUrl = params.get('session') || params.get('sessionId') || params.get('conversation')
+        if (fromUrl) return fromUrl
+        if (window.__DSH_SESSION_ID__) return window.__DSH_SESSION_ID__
+        if (window.__DSH_CONVERSATION_ID__) return window.__DSH_CONVERSATION_ID__
+      } catch { /* fallback */ }
+      return 'default'
+    }
+    // H2: 拼接带 session 的 URL
+    function stateUrl(sessionId) { return '/dsh-ppt-production/state?session=' + encodeURIComponent(getSessionId(sessionId)) }
+    function openedUrl(sessionId) { return '/dsh-ppt-production/opened?session=' + encodeURIComponent(getSessionId(sessionId)) }
     const CSS = `
 .dsm-root{height:100%;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
 .dsm-head{padding:14px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l1)}
@@ -93,15 +110,17 @@ window.__ModuleLoader__.load({
 .dsm-plan-link:hover{background:var(--dsw-alias-interactive-bg-hover,var(--dsw-alias-bg-layer-2))}
 `
 
-    function useWorkbenchState() {
+    function useWorkbenchState(sessionId) {
       const [state, setState] = useState(null)
       const [error, setError] = useState('')
       useEffect(() => {
         let alive = true
         let timer
         async function load() {
+          // L7: 页面隐藏时跳过轮询
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
           try {
-            const response = await fetch('/dsh-ppt-production/state', { cache: 'no-store' })
+            const response = await fetch(stateUrl(sessionId), { cache: 'no-store' })
             if (!response.ok) throw new Error('HTTP ' + response.status)
             const value = await response.json()
             if (alive) { setState(value); setError('') }
@@ -112,23 +131,51 @@ window.__ModuleLoader__.load({
         load()
         timer = setInterval(load, 2500)
         return () => { alive = false; clearInterval(timer) }
-      }, [])
+      }, [sessionId])
       return { state, error }
+    }
+
+    function escapeOutlineTitle(title) {
+      return String(title || '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|')
+    }
+
+    function splitOutlineLine(line) {
+      let title = '', rest = '', escaped = false, separated = false
+      for (const char of line) {
+        if (escaped) {
+          if (separated) rest += char
+          else title += char
+          escaped = false
+          continue
+        }
+        if (char === '\\') { escaped = true; continue }
+        if (char === '|' && !separated) { separated = true; continue }
+        if (separated) rest += char
+        else title += char
+      }
+      if (escaped) title += '\\'
+      return [title, rest]
     }
 
     function planToText(plan) {
       return (plan && plan.slides ? plan.slides : []).map(slide => {
         const bullets = Array.isArray(slide.bullets) ? slide.bullets : []
-        return slide.title + (bullets.length ? ' | ' + bullets.join('；') : '')
+        return escapeOutlineTitle(slide.title) + (bullets.length ? ' | ' + bullets.join('；') : '')
       }).join('\n')
     }
 
     function textToSlides(text, base) {
       return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, i) => {
-        const parts = line.split('|')
-        const title = (parts.shift() || '').trim()
-        const bullets = parts.join('|').split(/[；;]/).map(x => x.trim()).filter(Boolean)
-        const previous = base && Array.isArray(base.slides) ? base.slides[i] : undefined
+        const [rawTitle, bulletText] = splitOutlineLine(line)
+        const title = rawTitle.trim()
+        const bullets = bulletText.split(/[；;]/).map(x => x.trim()).filter(Boolean)
+        // L8: 仅在标题可唯一匹配时继承 notes/id；改标题视为新页，不继承旧备注
+        const baseSlides = base && Array.isArray(base.slides) ? base.slides : []
+        const prevByIndex = baseSlides[i]
+        const matches = baseSlides.filter(s => s.title === title)
+        const previous = (prevByIndex && prevByIndex.title === title)
+          ? prevByIndex
+          : (matches.length === 1 ? matches[0] : undefined)
         return {
           id: previous && previous.id ? previous.id : 'p' + (i + 1),
           title,
@@ -213,6 +260,52 @@ window.__ModuleLoader__.load({
       return { main: entry.main, extras }
     }
 
+    // M5: HEX 输入框本地草稿，blur/回车提交，允许逐字编辑
+    function DraftHexInput({ color, onChange }) {
+      const [draft, setDraft] = useState(() => color.replace('#', '').toUpperCase())
+      const focused = useRef(false)
+      useEffect(() => {
+        if (!focused.current) setDraft(color.replace('#', '').toUpperCase())
+      }, [color])
+      function commit() {
+        focused.current = false
+        const value = draft.trim()
+        if (/^[0-9a-fA-F]{6}$/.test(value)) onChange('#' + value.toLowerCase())
+        else setDraft(color.replace('#', '').toUpperCase())
+      }
+      return h('input', {
+        className: 'dsm-input dsm-hex-input', value: draft,
+        onFocus: () => { focused.current = true },
+        onChange: event => setDraft(event.target.value),
+        onBlur: commit,
+        onKeyDown: event => { if (event.key === 'Enter') commit() },
+      })
+    }
+
+    // M5: 数字输入框本地草稿，blur/回车提交，允许清空/中间态
+    function DraftNumField({ label, value, min, max, onCommit }) {
+      const [draft, setDraft] = useState(String(value))
+      const focused = useRef(false)
+      useEffect(() => {
+        if (!focused.current) setDraft(String(value))
+      }, [value])
+      function commit() {
+        focused.current = false
+        const trimmed = draft.trim()
+        if (trimmed === '' || isNaN(Number(trimmed))) { setDraft(String(value)); return }
+        onCommit(Math.max(min, Math.min(max, Number(trimmed))))
+      }
+      return h('label', { className: 'dsm-field' },
+        h('span', null, label),
+        h('input', {
+          className: 'dsm-input dsm-num', type: 'number', min, max, value: draft,
+          onFocus: () => { focused.current = true },
+          onChange: event => setDraft(event.target.value),
+          onBlur: commit,
+          onKeyDown: event => { if (event.key === 'Enter') commit() },
+        }))
+    }
+
     function ColorPicker({ color, onChange }) {
       const rgb = hexToRgb(color)
       const hsv = rgbToHsv(rgb)
@@ -235,12 +328,10 @@ window.__ModuleLoader__.load({
         const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
         changeHsv({ h: ratio * 360 })
       }
-      const field = (label, value, min, max, onChangeValue) => h('label', { className: 'dsm-field' },
-        h('span', null, label),
-        h('input', {
-          className: 'dsm-input dsm-num', type: 'number', min, max, value,
-          onChange: event => onChangeValue(event.target.value),
-        }))
+      // M5: 数字输入用本地草稿，blur/回车提交，允许中间态空值
+      const field = (label, value, min, max, onChangeValue) => h(DraftNumField, {
+        key: label, label, value, min, max, onCommit: onChangeValue,
+      })
       return h('div', { className: 'dsm-picker' },
         h('div', {
           className: 'dsm-sv',
@@ -257,13 +348,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dsm-hue-handle', style: { left: ((hsv.h / 360) * 100) + '%' } })),
         h('div', { className: 'dsm-hex-row' },
           h('span', null, '#'),
-          h('input', {
-            className: 'dsm-input dsm-hex-input', value: color.replace('#', '').toUpperCase(),
-            onChange: event => {
-              const value = event.target.value.trim()
-              if (/^[0-9a-fA-F]{6}$/.test(value)) onChange('#' + value.toLowerCase())
-            },
-          })),
+          h(DraftHexInput, { color, onChange })),
         h('div', { className: 'dsm-field-group' },
           h('span', { className: 'dsm-group-title' }, 'RGB'),
           h('div', { className: 'dsm-fields' },
@@ -306,14 +391,16 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function WorkbenchAutoOpen({ onOpen }) {
+    function WorkbenchAutoOpen({ onOpen, sessionId }) {
       const baseline = useRef(undefined)
       useEffect(() => {
         let alive = true
         let timer
         async function load() {
+          // L7: 页面隐藏时跳过轮询
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
           try {
-            const response = await fetch('/dsh-ppt-production/state', { cache: 'no-store' })
+            const response = await fetch(stateUrl(sessionId), { cache: 'no-store' })
             if (!response.ok) return
             const value = await response.json()
             if (!alive) return
@@ -326,7 +413,7 @@ window.__ModuleLoader__.load({
               baseline.current = at
               if (value.plan) {
                 onOpen()
-                try { fetch('/dsh-ppt-production/opened', { method: 'POST' }).catch(() => {}) } catch { /* marker only */ }
+                try { fetch(openedUrl(sessionId), { method: 'POST' }).catch(() => {}) } catch { /* marker only */ }
               }
             }
           } catch { /* state route unavailable */ }
@@ -334,12 +421,12 @@ window.__ModuleLoader__.load({
         load()
         timer = setInterval(load, 2000)
         return () => { alive = false; clearInterval(timer) }
-      }, [onOpen])
+      }, [onOpen, sessionId])
       return null
     }
 
     function PlanCard(props) {
-      const { block, onOpen } = props
+      const { block, onOpen, sessionId } = props
       const [expanded, setExpanded] = useState(false)
       const [style, setStyle] = useState(null)
       const phase = block && block.phase
@@ -361,7 +448,7 @@ window.__ModuleLoader__.load({
         || (args && typeof args.text === 'function' ? args.text('style') : undefined)
       useEffect(() => {
         let alive = true
-        fetch('/dsh-ppt-production/state', { cache: 'no-store' })
+        fetch(stateUrl(sessionId), { cache: 'no-store' })
           .then(response => response.json())
           .then(value => {
             if (!alive) return
@@ -371,7 +458,7 @@ window.__ModuleLoader__.load({
           })
           .catch(() => {})
         return () => { alive = false }
-      }, [styleId])
+      }, [styleId, sessionId])
       const slides = plan && Array.isArray(plan.slides) ? plan.slides : []
       const error = result && result.ok === false ? String(result.error || '生成大纲失败') : ''
       const title = plan && plan.title ? plan.title : (phase === 'preparing' ? '正在准备大纲…' : 'PPT 工作台大纲')
@@ -405,8 +492,8 @@ window.__ModuleLoader__.load({
     }
 
     function Workbench(props) {
-      const { inputActions, initialTab } = props
-      const { state, error } = useWorkbenchState()
+      const { inputActions, initialTab, sessionId } = props
+      const { state, error } = useWorkbenchState(sessionId)
       const [tab, setTab] = useState(initialTab || 'suggested')
       const [selectedStyle, setSelectedStyle] = useState('')
       const [styleTouched, setStyleTouched] = useState(false)
@@ -572,7 +659,12 @@ window.__ModuleLoader__.load({
           setLocalError('当前输入框不可用；请直接在对话里说“批准构建”。')
           return
         }
-        const styleOverrides = tab === 'custom'
+        // M1: 只要 custom 有改动就携带 styleOverrides，不以当前页签决定
+        const hasCustom = ['bg', 'ink', 'accent'].some(key => {
+          const entry = custom[key]
+          return entry && typeof entry === 'object' && typeof entry.main === 'string'
+        })
+        const styleOverrides = hasCustom
           ? {
               bg: customBg, ink: customInk, accent: customAccent,
               extras: {
@@ -595,7 +687,7 @@ window.__ModuleLoader__.load({
           style: selectedStyle || (style && style.id),
           ...(styleOverrides ? { styleOverrides } : {}),
         }
-        const message = '【PPT 工作台 批准构建】\n请按下面内容调用 deck_build：deck.style 用 style；deck.styleOverrides 原样传入；plan.slides 映射为 deck.slides（第 1 页 cover，中间 title-body，最后一页 closing）。\n' +
+        const message = '【PPT 工作台 批准构建】\n请按下面内容调用 deck_build：deck.style 用 style；deck.styleOverrides 原样传入；plan.slides 映射为 deck.slides，根据每页内容选择合适版式（cover/section/title-body/two-col/image/closing）。\n' +
           JSON.stringify(payload, null, 2) +
           '\n构建完成后调用 present 交付 pptx，让用户在右侧内置窗口预览。'
         inputActions.setDraft(message)
@@ -649,7 +741,7 @@ window.__ModuleLoader__.load({
             activeSlot !== 'main'
               ? h('button', { type: 'button', className: 'dsm-btn', style: { marginTop: '8px' }, onClick: removeActiveColor }, '删除这个附属色')
               : null,
-            h('div', { className: 'dsm-muted', style: { marginTop: '6px' } }, '风格里的背景/正文/强调各是一组颜色；主色进 deck_build，附属色先随 styleOverrides 保存（强调色附属色会用于页眉色条）。'))
+            h('div', { className: 'dsm-muted', style: { marginTop: '6px' } }, '风格里的背景/正文/强调各是一组颜色；主色进 deck_build；强调附属色轮换到页眉色条，背景附属色用于 section/closing 页背景，正文附属色用于这些页的大标题并自动检查对比度。'))
         : h('div', { className: 'dsm-style-grid' },
             (tab === 'suggested'
               ? [styles.find(item => item.id === ((state && state.selectedStyle) || (plan && plan.recommendedStyle))) || style].filter(Boolean)
@@ -706,21 +798,26 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dsm-actions' },
             h('button', { type: 'button', className: 'dsm-btn', onClick: suggest }, '建议更改'),
             h('button', { type: 'button', className: 'dsm-btn dsm-btn-primary', onClick: approve }, '批准并构建'))),
-        menu ? h('div', {
-          className: 'dsm-ctx',
-          style: { left: menu.x, top: menu.y },
-          onMouseDown: event => event.stopPropagation(),
-        },
-          h('button', {
-            type: 'button', className: 'dsm-ctx-item',
-            disabled: menu.slot === 'main' && colorEntries[menu.category].extras.length === 0,
-            onClick: deleteMenuColor,
-          }, '删除此颜色')) : null)
+        menu ? (() => {
+          // M6: fixed 菜单做视口边界 clamp，避免靠右/靠下右键时越界
+          const left = Math.max(8, Math.min(menu.x, window.innerWidth - 150))
+          const top = Math.max(8, Math.min(menu.y, window.innerHeight - 50))
+          return h('div', {
+            className: 'dsm-ctx',
+            style: { left, top },
+            onMouseDown: event => event.stopPropagation(),
+          },
+            h('button', {
+              type: 'button', className: 'dsm-ctx-item',
+              disabled: menu.slot === 'main' && colorEntries[menu.category].extras.length === 0,
+              onClick: deleteMenuColor,
+            }, '删除此颜色'))
+        })() : null)
     }
 
     return {
       inject: ['slots'],
-      __test: { hexToRgb, rgbToHex, rgbToHsv, hsvToRgb, hsvToHex, cmykOf, cmykToHex, deleteColorEntry },
+      __test: { hexToRgb, rgbToHex, rgbToHsv, hsvToRgb, hsvToHex, cmykOf, cmykToHex, deleteColorEntry, planToText, textToSlides },
       apply(ctx) {
         const read = (name) => (typeof ctx.get === 'function' ? ctx.get(name) : undefined)
         const sidebarRight = read('sidebarRight') || ctx.sidebarRight
@@ -751,7 +848,7 @@ window.__ModuleLoader__.load({
           name: 'conversation.input.dock',
           id: 'dsh-ppt-production.auto',
           order: 20,
-        }, () => h(WorkbenchAutoOpen, { onOpen: openWorkbench })))
+        }, (props) => h(WorkbenchAutoOpen, { ...props, onOpen: openWorkbench })))
       },
     }
   },

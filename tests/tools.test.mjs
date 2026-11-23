@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { registerDeckTools } from '../src/tools.mjs'
 import { unzip } from '../src/zip.mjs'
+import { resetWorkbenchState, snapshot } from '../src/workbench-state.mjs'
 
 function fakeCtx() {
   const tools = new Map()
@@ -18,7 +19,7 @@ function fakeCtx() {
   }
 }
 const defineTool = (def) => def
-const run = (ctx, name, args) => ctx._tools.get(name).execute(args, { signal: new AbortController().signal })
+const run = (ctx, name, args, exec = { signal: new AbortController().signal }) => ctx._tools.get(name).execute(args, exec)
 const parse = (s) => JSON.parse(s)
 
 test('注册五个工具', () => {
@@ -68,6 +69,7 @@ test('deck_edit 改模型重建', async () => {
   const deck = { meta: { title: '编辑测试' }, style: 'ink-paper', slides: [{ id: 's1', layout: 'cover', title: '原标题' }] }
   const b = parse(await run(ctx, 'deck_build', { deck, outDir: dir }))
   const e = parse(await run(ctx, 'deck_edit', { modelPath: b.modelPath, patch: { op: 'set-text', slideId: 's1', field: 'title', value: '改后标题' }, outDir: dir }))
+  assert.equal(e.modelPath, b.modelPath, '编辑应复用原模型路径')
   const s1 = unzip(readFileSync(e.pptxPath)).get('ppt/slides/slide1.xml').toString('utf8')
   assert.ok(s1.includes('<a:t>改后标题</a:t>'))
 })
@@ -84,4 +86,29 @@ test('deck_build 非法 deck 返回可读错误', async () => {
   const r = parse(await run(ctx, 'deck_build', { deck: { slides: [] }, outDir: mkdtempSync(join(tmpdir(), 'deck-')) }))
   assert.equal(r.ok, false)
   assert.match(r.error, /slides/)
+})
+test('同标题 build 两次产不同文件名（M7）', async () => {
+  const ctx = fakeCtx(); registerDeckTools(ctx, {}, { defineTool })
+  const dir = mkdtempSync(join(tmpdir(), 'deck-'))
+  const deck = { meta: { title: '同名测试' }, style: 'ink-paper', slides: [{ layout: 'cover', title: 'A' }] }
+  const r1 = parse(await run(ctx, 'deck_build', { deck, outDir: dir }))
+  // 相同 createdAt 也必须独立，不能靠时间戳避开碰撞
+  const deck2 = { ...deck, slides: [{ layout: 'cover', title: 'B' }] }
+  const r2 = parse(await run(ctx, 'deck_build', { deck: deck2, outDir: dir }))
+  assert.notEqual(r1.modelPath, r2.modelPath, '同标题应产生不同 modelPath')
+  assert.ok(existsSync(r1.modelPath), '旧文件应仍存在')
+  assert.ok(existsSync(r2.modelPath), '新文件应存在')
+  assert.ok(existsSync(r1.pptxPath), '旧 pptx 应仍存在')
+})
+test('H2: 工具从真实 exec.agent.session 隔离工作台', async () => {
+  resetWorkbenchState()
+  const ctx = fakeCtx(); registerDeckTools(ctx, {}, { defineTool })
+  const execA = { agent: { session: { id: 'session-a', header: {} } } }
+  const execB = { agent: { session: { id: 'session-b', header: {} } } }
+  await run(ctx, 'deck_plan', { plan: { title: 'A', slides: [{ title: 'A1' }] } }, execA)
+  await run(ctx, 'deck_plan', { plan: { title: 'B', slides: [{ title: 'B1' }] } }, execB)
+  assert.equal(snapshot('session-a').plan.title, 'A')
+  assert.equal(snapshot('session-b').plan.title, 'B')
+  assert.equal(snapshot('default').plan, null)
+  resetWorkbenchState()
 })

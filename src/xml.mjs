@@ -10,7 +10,7 @@ function decode(s) {
 }
 export function extractSlideText(xml) {
   const texts = []
-  const re = /<a:t>([\s\S]*?)<\/a:t>/g
+  const re = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/g
   let m
   while ((m = re.exec(xml))) texts.push(decode(m[1]))
   return {

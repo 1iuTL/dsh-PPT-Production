@@ -60,3 +60,23 @@ test('client module registers workbench tab type, body and composer button', () 
   assert.equal(toolview.key, 'deck_plan')
   assert.equal(bar.id, 'dsh-ppt-production.auto')
 })
+
+test('大纲编辑支持标题转义且改标题不继承旧备注', () => {
+  const module = loaded.factory(() => fakeReact)
+  const { planToText, textToSlides } = module.__test
+  const base = { slides: [
+    { id: 'a', title: '含|竖线', bullets: ['甲'], notes: 'A备注' },
+    { id: 'b', title: '第二页', bullets: ['乙'], notes: 'B备注' },
+  ] }
+  const text = planToText(base)
+  assert.ok(text.includes('含\\|竖线'))
+  const roundTrip = textToSlides(text, base)
+  assert.equal(roundTrip[0].title, '含|竖线')
+  assert.equal(roundTrip[0].notes, 'A备注')
+  const reordered = textToSlides('第二页 | 乙\n含\\|竖线 | 甲', base)
+  assert.equal(reordered[0].id, 'b')
+  assert.equal(reordered[0].notes, 'B备注')
+  const renamed = textToSlides('全新标题 | 甲\n第二页 | 乙', base)
+  assert.equal(renamed[0].notes, undefined)
+  assert.equal(renamed[1].notes, 'B备注')
+})

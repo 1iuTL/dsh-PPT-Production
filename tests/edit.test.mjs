@@ -35,3 +35,8 @@ test('reorder 重复 id / add-slide 撞 id 抛错', () => {
   assert.throws(() => applyPatch(base(), { op: 'reorder', order: ['s2', 's2'] }))
   assert.throws(() => applyPatch(base(), { op: 'add-slide', slide: { id: 's1', layout: 'closing', title: '撞' } }))
 })
+test('add-slide 缺 slide 对象抛错（L2）', () => {
+  assert.throws(() => applyPatch(base(), { op: 'add-slide', slide: null }), /slide 对象/)
+  assert.throws(() => applyPatch(base(), { op: 'add-slide' }), /slide 对象/)
+  assert.throws(() => applyPatch(base(), { op: 'add-slide', slide: 'string' }), /slide 对象/)
+})

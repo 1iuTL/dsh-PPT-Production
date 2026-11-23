@@ -16,6 +16,11 @@ test('extractSlideText 抽文本与计数', () => {
   assert.equal(r.shapeCount, 2)
   assert.equal(r.pictureCount, 1)
 })
+test('extractSlideText 读取带属性的 <a:t>（H1）', () => {
+  const xml = '<p:sld><p:sp><a:t xml:space="preserve"> 空格 </a:t></p:sp><p:sp><a:t>裸文本</a:t></p:sp><p:sp><a:t lang="zh-CN" dirty="0">多属性</a:t></p:sp></p:sld>'
+  const r = extractSlideText(xml)
+  assert.deepEqual(r.texts, [' 空格 ', '裸文本', '多属性'])
+})
 test('往返：build 的 pptx 能 read 回原文', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'deck-'))
   const out = join(dir, 'rt.pptx')

@@ -1,15 +1,14 @@
 import pptxgen from '../vendor/pptxgen.bundle.mjs'
+import { slideColors } from './slide-colors.mjs'
 
 const hex = (c) => c.replace('#', '')
 
 function addSlide(pptx, s, style, index) {
   const slide = pptx.addSlide()
   const p = style.palette
-  slide.background = { color: hex(p.bg) }
-  const ink = hex(p.ink), muted = hex(p.muted)
-  const accentPool = [p.accent, ...(Array.isArray(style.extras?.accent) ? style.extras.accent : [])]
-    .map(hex)
-  const accent = accentPool[index % accentPool.length] || hex(p.accent)
+  const { bg, ink, accent } = slideColors(style, s.layout, index)
+  slide.background = { color: bg }
+  const muted = hex(p.muted)
   const H = style.fonts.heading, B = style.fonts.body
   const bar = () => slide.addShape(pptx.ShapeType.rect, { x: 0.6, y: 0.45, w: 0.7, h: 0.07, fill: { color: accent } })
   switch (s.layout) {

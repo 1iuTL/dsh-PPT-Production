@@ -38,3 +38,23 @@ test('强调色附属色按页轮换到形状', async () => {
   const s2 = entries.get('ppt/slides/slide2.xml').toString('utf8')
   assert.match(s2, /FF0000/i)
 })
+
+test('背景附属色用于 section/closing 页背景（M3）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deck-'))
+  const out = join(dir, 'bg.pptx')
+  const style = { ...getStyle('ink-paper'), extras: { bg: ['#E8F0FE'] } }
+  const deck = normalizeDeck({ slides: [
+    { layout: 'cover', title: 'A' },
+    { layout: 'section', title: 'B' },
+    { layout: 'closing', title: 'C' },
+  ]})
+  await renderPptx(deck, style, out)
+  const entries = unzip(readFileSync(out))
+  const s1 = entries.get('ppt/slides/slide1.xml').toString('utf8')
+  const s2 = entries.get('ppt/slides/slide2.xml').toString('utf8')
+  const s3 = entries.get('ppt/slides/slide3.xml').toString('utf8')
+  // cover 页用默认背景，section/closing 页用 extras.bg
+  assert.ok(!s1.includes('E8F0FE'), 'cover 页不应使用 extras.bg')
+  assert.ok(s2.includes('E8F0FE'), 'section 页应使用 extras.bg')
+  assert.ok(s3.includes('E8F0FE'), 'closing 页应使用 extras.bg')
+})

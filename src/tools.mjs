@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module'
-import { existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { existsSync, realpathSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { normalizeDeck, validateDeck } from './model.mjs'
 import { getStyle, listStyles } from './styles.mjs'
 import { normalizePlan } from './plan.mjs'
@@ -34,7 +35,7 @@ function loadDefineTool() {
     add(join(dirname(text), '..', 'lib', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'))
     add(join(dirname(text), '..', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'))
   }
-  for (const bin of [process.argv[1], process.env.PURGE_DSH_CLI, process.env.DSH_CLI]) {
+  for (const bin of [process.argv[1], process.env.DSH_CLI]) {
     try { considerBin(bin) } catch {}
   }
   for (const home of [process.env.DSH_HOME, join(homedir(), '.dsh')].filter(Boolean)) {
@@ -58,7 +59,21 @@ function loadDefineTool() {
 
 const text = (v) => [{ type: 'text', text: typeof v === 'string' ? v : JSON.stringify(v, null, 2) }]
 const slug = (s) => String(s).replace(/[^\w\u4e00-\u9fa5-]+/g, '-').slice(0, 40) || 'deck'
+// M7: 每次新构建使用独立随机后缀，避免同标题/同 createdAt 覆盖
+const uniqueSlug = (title) => slug(title) + '-' + randomBytes(4).toString('hex')
 const errorText = (e) => String(e && e.message ? e.message : e)
+// L6: 优先使用会话工作区，无法取得时回退用户 decks 目录
+const defaultOutDir = (exec) => {
+  const cwd = exec?.agent?.session?.header?.cwd
+  return typeof cwd === 'string' && cwd ? cwd : join(homedir(), 'decks')
+}
+
+// H2: 从真实宿主 exec.agent.session 提取会话绑定键；子会话优先共享父会话工作台
+function sessionKeyOf(exec) {
+  const session = exec?.agent?.session
+  if (session?.id != null) return String(session.header?.parentSession || session.id)
+  return exec?.sessionId || exec?.conversationId || exec?.session?.id || exec?.conversation?.id || 'default'
+}
 
 function resolveStyle(id, overrides) {
   const base = getStyle(id) ?? getStyle('ink-paper')
@@ -77,21 +92,32 @@ function resolveStyle(id, overrides) {
   return { ...base, palette, fonts, ...(extras ? { extras } : {}) }
 }
 
-async function buildAll(deck, outDir) {
+async function buildAll(deck, outDir, sessionKey, baseName) {
   const norm = normalizeDeck(deck)
   const v = validateDeck(norm)
   if (!v.ok) throw new Error('deck_build: 模型非法 — ' + v.errors.join('; '))
   const style = resolveStyle(norm.style, norm.styleOverrides)
   mkdirSync(outDir, { recursive: true })
-  const base = join(outDir, slug(norm.meta.title))
+  const base = join(outDir, baseName || uniqueSlug(norm.meta.title))
   const modelPath = base + '.deck.json', pptxPath = base + '.pptx', htmlPath = base + '.preview.html'
-  writeFileSync(modelPath, JSON.stringify(norm, null, 2), 'utf8')
-  await renderPptx(norm, style, pptxPath)
-  writeFileSync(htmlPath, renderHtml(norm, style), 'utf8')
+  // L5: 三件先写临时文件，全部成功后再提交，避免渲染失败破坏已有产物
+  const tmpBase = base + '.tmp-' + process.pid + '-' + randomBytes(4).toString('hex')
+  const tmpModel = tmpBase + '.deck.json', tmpPptx = tmpBase + '.pptx', tmpHtml = tmpBase + '.preview.html'
+  try {
+    await renderPptx(norm, style, tmpPptx)
+    writeFileSync(tmpHtml, renderHtml(norm, style), 'utf8')
+    writeFileSync(tmpModel, JSON.stringify(norm, null, 2), 'utf8')
+    renameSync(tmpPptx, pptxPath)
+    renameSync(tmpHtml, htmlPath)
+    renameSync(tmpModel, modelPath)
+  } catch (error) {
+    for (const path of [tmpModel, tmpPptx, tmpHtml]) rmSync(path, { force: true })
+    throw error
+  }
   setBuild({
     title: norm.meta.title, slideCount: norm.slides.length, style: style.id,
     modelPath, pptxPath, htmlPath,
-  })
+  }, sessionKey)
   return { modelPath, pptxPath, htmlPath, slideCount: norm.slides.length, style: style.id }
 }
 
@@ -128,9 +154,9 @@ export function registerDeckTools(ctx, config, opts = {}) {
       style: { type: 'string', description: '推荐风格 id（见 deck_styles）' },
     },
     output: { schema: { type: 'string' }, render: (_a, v) => text(v) },
-    execute: guard(async (args) => {
+    execute: guard(async (args, exec) => {
       const plan = normalizePlan(args.plan)
-      setPlan(plan, args.style)
+      setPlan(plan, args.style, sessionKeyOf(exec))
       return { ok: true, plan, hint: '计划卡已生成，客户端会展开右侧 PPT 工作台；请让用户确认，批准后再调用 deck_build。' }
     }),
   })
@@ -144,9 +170,9 @@ export function registerDeckTools(ctx, config, opts = {}) {
       outDir: { type: 'string', description: '输出目录绝对路径；建议显式传会话工作区' },
     },
     output: { schema: { type: 'string' }, render: (_a, v) => text(v) },
-    execute: guard(async (args) => {
+    execute: guard(async (args, exec) => {
       const deck = { ...(args.deck ?? {}), ...(args.style ? { style: args.style } : {}) }
-      return buildAll(deck, args.outDir || process.cwd())
+      return buildAll(deck, args.outDir || defaultOutDir(exec), sessionKeyOf(exec))
     }),
   })
 
@@ -171,11 +197,11 @@ export function registerDeckTools(ctx, config, opts = {}) {
       outDir: { type: 'string', description: '输出目录；缺省模型所在目录' },
     },
     output: { schema: { type: 'string' }, render: (_a, v) => text(v) },
-    execute: guard(async (args) => {
+    execute: guard(async (args, exec) => {
       if (typeof args.modelPath !== 'string' || !existsSync(args.modelPath)) throw new Error('deck_edit: 模型文件不存在: ' + args.modelPath)
       const deck = JSON.parse(readFileSync(args.modelPath, 'utf8'))
       const next = applyPatch(deck, args.patch)
-      return buildAll(next, args.outDir || dirname(args.modelPath))
+      return buildAll(next, args.outDir || dirname(args.modelPath), sessionKeyOf(exec), basename(args.modelPath, '.deck.json'))
     }),
   })
 }

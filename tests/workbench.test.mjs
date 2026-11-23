@@ -33,3 +33,29 @@ test('workbench 快照带风格与 build', () => {
   assert.equal(typeof snapshot().openedAt, 'string')
   resetWorkbenchState()
 })
+
+test('H2: 不同 sessionKey 的 plan 互不覆盖', () => {
+  resetWorkbenchState()
+  setPlan(normalizePlan({ title: '会话A', slides: [{ title: 'A1' }] }), 'ink-paper', 'session-a')
+  setPlan(normalizePlan({ title: '会话B', slides: [{ title: 'B1' }] }), 'indigo-deep', 'session-b')
+  const a = snapshot('session-a')
+  const b = snapshot('session-b')
+  assert.equal(a.plan.title, '会话A')
+  assert.equal(b.plan.title, '会话B')
+  assert.equal(a.selectedStyle, 'ink-paper')
+  assert.equal(b.selectedStyle, 'indigo-deep')
+  // default 不受影响
+  const d = snapshot('default')
+  assert.equal(d.plan, null)
+  resetWorkbenchState()
+})
+
+test('H2: 不同 sessionKey 的 build 互不覆盖', () => {
+  resetWorkbenchState()
+  setBuild({ title: 'A', slideCount: 1, style: 'ink-paper', pptxPath: 'a.pptx' }, 'session-a')
+  setBuild({ title: 'B', slideCount: 2, style: 'indigo-deep', pptxPath: 'b.pptx' }, 'session-b')
+  assert.equal(snapshot('session-a').build.pptxPath, 'a.pptx')
+  assert.equal(snapshot('session-b').build.pptxPath, 'b.pptx')
+  assert.equal(snapshot('default').build, null)
+  resetWorkbenchState()
+})
